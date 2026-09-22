@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Fire Hydrant Coverage — Warner Robins</title>
+
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css" rel="stylesheet" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    color-scheme: dark;
+    --cyan: #73dfff;
+    --cyan-deep: #2bb8e6;
+    --ink: #eaf6fa;
+    --ink-dim: #9db4bd;
+    --glass: rgba(18, 26, 32, 0.55);
+    --glass-brd: rgba(255, 255, 255, 0.12);
+    --glass-hi: rgba(255, 255, 255, 0.06);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    --amber: #ffb347;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ink: #0f2731;
+    --ink-dim: #4f6b76;
+    --glass: rgba(255, 255, 255, 0.6);
+    --glass-brd: rgba(15, 39, 49, 0.12);
+    --glass-hi: rgba(15, 39, 49, 0.04);
+    --shadow: 0 10px 40px rgba(31, 60, 72, 0.18);
+    --cyan-deep: #0c86b3;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Public Sans", system-ui, sans-serif;
+    color: var(--ink);
+    background: #0b1116;
+    overflow: hidden;
+  }
+  #map { position: absolute; inset: 0; }
+
+  .glass {
+    background: var(--glass);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--glass-brd);
+    box-shadow: var(--shadow), inset 0 1px 0 var(--glass-hi);
+    border-radius: 18px;
+  }
+
+  /* ---- control panel ---- */
+  #panel {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    left: 16px;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    padding: 18px 18px 16px;
+    z-index: 10;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+  }
+  .phead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .brand svg { flex: none; }
+  .chev {
+    flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+    background: var(--glass-hi); border: 1px solid var(--glass-brd); border-radius: 10px;
+    color: var(--ink-dim); cursor: pointer; transition: transform 0.25s ease;
+  }
+  .chev svg { width: 18px; height: 18px; }
+  #panel.collapsed .chev { transform: rotate(180deg); }
+  #panel.collapsed { padding-bottom: 18px; width: auto; }
+  .panel-body {
+    overflow: hidden;
+    max-height: 70vh; opacity: 1;
+    transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease;
+  }
+  #panel.collapsed .panel-body { max-height: 0; opacity: 0; margin-top: 0; pointer-events: none; }
+  h1 {
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin: 0;
+  }
+  .sub { color: var(--ink-dim); font-size: 12.5px; margin: 2px 0 16px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .stat {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--glass-hi);
+    border: 1px solid var(--glass-brd);
+  }
+  .stat .n {
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--cyan-deep);
+  }
+  .stat .l { font-size: 11px; color: var(--ink-dim); margin-top: 5px; }
+
+  .field { margin-bottom: 14px; }
+  .field > .cap { font-size: 12px; color: var(--ink-dim); margin-bottom: 8px; }
+
+  .seg { display: flex; gap: 6px; }
+  .seg button {
+    flex: 1;
+    font: inherit;
+    font-size: 13px;
+    padding: 8px 0;
+    color: var(--ink-dim);
+    background: var(--glass-hi);
+    border: 1px solid var(--glass-brd);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .seg button.on {
+    color: #04222c;
+    background: var(--cyan);
+    border-color: var(--cyan);
+    font-weight: 600;
+  }
+  :root[data-theme="light"] .seg button.on { color: #04222c; }
+
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 0;
+  }
+  .toggle-row label { font-size: 14px; cursor: pointer; }
+  .swi { position: relative; width: 42px; height: 24px; flex: none; }
+  .swi input { position: absolute; inset: 0; z-index: 2; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .swi .track {
+    position: absolute; inset: 0; border-radius: 999px; pointer-events: none;
+    background: var(--glass-hi); border: 1px solid var(--glass-brd);
+    transition: background 0.2s;
+  }
+  .swi .track::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--ink-dim); transition: transform 0.2s, background 0.2s;
+  }
+  .swi input:checked + .track { background: rgba(115, 223, 255, 0.35); border-color: var(--cyan); }
+  .swi input:checked + .track::after { transform: translateX(18px); background: var(--cyan); }
+
+  .hint { font-size: 12px; color: var(--ink-dim); margin-top: 14px; line-height: 1.45; }
+  .hint b { color: var(--ink); font-weight: 600; }
+
+  /* ---- top-right buttons ---- */
+  #tools {
+    position: absolute;
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    right: 16px;
+    z-index: 10;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .iconbtn {
+    width: 46px; height: 46px;
+    display: grid; place-items: center;
+    cursor: pointer; color: var(--ink);
+    border-radius: 14px;
+  }
+  .iconbtn:active { transform: scale(0.94); }
+  .iconbtn svg { width: 20px; height: 20px; }
+
+  /* ---- distance readout chip ---- */
+  #readout {
+    position: absolute;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: 50%; transform: translateX(-50%) translateY(12px);
+    padding: 12px 18px; z-index: 10;
+    display: flex; align-items: center; gap: 14px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    white-space: nowrap;
+  }
+  #readout.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #readout .big {
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700; font-size: 20px; color: var(--cyan-deep);
+  }
+  #readout .lab { font-size: 12.5px; color: var(--ink-dim); }
+  #readout .x { cursor: pointer; color: var(--ink-dim); font-size: 18px; line-height: 1; padding: 2px 4px; }
+
+  /* ---- loading ---- */
+  #load {
+    position: absolute; inset: 0; z-index: 30;
+    display: grid; place-items: center;
+    background: #0b1116;
+    transition: opacity 0.4s ease;
+  }
+  #load.hide { opacity: 0; pointer-events: none; }
+  .spin {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 3px solid rgba(115, 223, 255, 0.2);
+    border-top-color: var(--cyan);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #load p { color: var(--ink-dim); font-size: 13px; margin-top: 16px; }
+
+  #working {
+    position: absolute; bottom: 20px; right: 16px; z-index: 10;
+    padding: 8px 14px; font-size: 12.5px; color: var(--ink-dim);
+    display: none; align-items: center; gap: 9px;
+  }
+  #working.show { display: flex; }
+  #working .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); animation: pulse 1s ease infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  .maplibregl-popup-content {
+    background: var(--glass); backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--glass-brd); border-radius: 14px;
+    box-shadow: var(--shadow); color: var(--ink);
+    font-family: "Public Sans", sans-serif; padding: 12px 14px;
+  }
+  .maplibregl-popup-content h3 {
+    font-family: "Space Grotesk", sans-serif; margin: 0 0 4px;
+    font-size: 15px; color: var(--cyan-deep);
+  }
+  .maplibregl-popup-content .row { font-size: 12.5px; color: var(--ink-dim); margin: 2px 0; }
+  .maplibregl-popup-tip { display: none; }
+  .maplibregl-popup-close-button { color: var(--ink-dim); font-size: 18px; }
+  .maplibregl-ctrl-attrib { font-size: 10px; }
+
+  @media (max-width: 560px) {
+    #panel { width: calc(100vw - 32px); top: auto; bottom: calc(16px + env(safe-area-inset-bottom,0px)); left: 16px; max-height: 62dvh; padding: 14px; }
+    #panel.collapsed { width: auto; }
+    h1 { font-size: 16px; }
+    .panel-body { max-height: 52dvh; }
+    #readout { bottom: auto; top: calc(16px + env(safe-area-inset-top,0px)); }
+    #tools { top: calc(16px + env(safe-area-inset-top,0px)); }
+    #working { bottom: auto; top: 74px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel" class="glass">
+  <div class="phead">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="var(--cyan)" stroke-width="1.5" opacity="0.5"/>
+        <circle cx="12" cy="12" r="3.5" fill="var(--cyan)"/>
+      </svg>
+      <h1>Fire Hydrant Coverage</h1>
+    </div>
+    <button id="panel-toggle" class="chev" aria-label="Minimize panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+  </div>
+
+  <div class="panel-body">
+    <p class="sub">City of Warner Robins · live from the city GIS</p>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="s-count">—</div><div class="l">Hydrants mapped</div></div>
+      <div class="stat"><div class="n" id="s-area">—</div><div class="l">Of city within 500 ft</div></div>
+    </div>
+
+    <div class="field">
+      <div class="cap">Coverage = area within <b style="color:var(--ink)">500 ft</b> of a hydrant (residential &amp; commercial)</div>
+    </div>
+
+    <div class="field">
+      <div class="toggle-row">
+        <label for="t-cov">Show coverage</label>
+        <span class="swi"><input type="checkbox" id="t-cov" checked><span class="track"></span></span>
+      </div>
+      <div class="toggle-row">
+        <label for="t-pts">Show hydrants</label>
+        <span class="swi"><input type="checkbox" id="t-pts" checked><span class="track"></span></span>
+      </div>
+      <div class="toggle-row">
+        <label for="t-parcels">Show coverage gaps</label>
+        <span class="swi"><input type="checkbox" id="t-parcels"><span class="track"></span></span>
+      </div>
+      <p class="hint" id="gap-line" style="display:none;margin-top:10px"></p>
+    </div>
+
+    <p class="hint"><b>Tap anywhere</b> on the map to find the nearest hydrant and its distance.</p>
+  </div>
+</div>
+
+<div id="tools">
+  <div class="iconbtn glass" id="btn-locate" title="Find my location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
+  </div>
+  <div class="iconbtn glass" id="btn-base" title="Switch basemap: dark / imagery">
+    <svg id="base-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="12 2 22 8.5 12 15 2 8.5 12 2"/><polyline points="2 15.5 12 22 22 15.5"/></svg>
+  </div>
+</div>
+
+<div id="readout" class="glass">
+  <div><span class="big" id="r-dist">—</span> <span class="lab">to nearest hydrant</span></div>
+  <span class="x" id="r-close">×</span>
+</div>
+
+<div id="working" class="glass"><span class="dot"></span><span>Building coverage…</span></div>
+
+<div id="load">
+  <div style="text-align:center">
+    <div class="spin" style="margin:0 auto"></div>
+    <p id="load-msg">Loading hydrants…</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/7.1.0/turf.min.js"></script>
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const FH_URL = "https://services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/Survey_Points_view_FH/FeatureServer/0/query";
+
+// Parcels: whole city loaded once, classified covered/uncovered vs coverage.
+// Gap (uncovered) parcels draw orange; covered parcels are invisible but clickable.
+const PARCEL_URL   = "https://services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/Base_Map_Polygon/FeatureServer/0/query";
+const PARCEL_WHERE = "City = 'Warner Robins'";
+
+// City limits — used to compute "% of city within 500 ft of a hydrant".
+const LIMITS_URL = "https://services6.arcgis.com/wtKwyZlCD3bY8Zh4/arcgis/rest/services/CWR_Limits_Polygon/FeatureServer/0/query";
+
+const STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+const STYLE_IMAGERY = {
+  version: 8,
+  sources: {
+    esri: {
+      type: "raster",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256,
+      attribution: "Esri, Maxar, Earthstar Geographics"
+    }
+  },
+  layers: [{ id: "esri-imagery", type: "raster", source: "esri" }]
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let hydrants = null;              // FeatureCollection of FH points (WGS84)
+let coverageCache = {};           // { feetRadius: Feature }
+let curRadius = 500;              // single coverage standard: 500 ft
+let showCoverage = true;
+let showPoints = true;
+let basemap = "dark";
+let clickMarker = null;
+let handlersBound = false;
+let showParcels = false;
+let parcelCache = null;          // all WR parcels, fetched once
+let cityLimits = null;           // unioned limits polygon
+let hydrantGrid = null;          // spatial grid for fast coverage tests
+let gridCell = null;             // { lat, lng } cell size in degrees
+
+const $ = (id) => document.getElementById(id);
+
+/* ============================================================
+   MAP
+   ============================================================ */
+const map = new maplibregl.Map({
+  container: "map",
+  style: STYLE_DARK,
+  center: [-83.62, 32.60],   // Warner Robins-ish; refit after load
+  zoom: 11,
+  attributionControl: { compact: true }
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+
+/* ============================================================
+   DATA LOAD (paginated, reprojected to 4326)
+   ============================================================ */
+async function fetchAllFH() {
+  const base = {
+    where: "UPPER(Description) LIKE 'FH%'",
+    outFields: "OBJECTID,Description,GPS_Number,Date",
+    outSR: "4326",
+    f: "geojson",
+    resultRecordCount: "2000"
+  };
+  let offset = 0, feats = [];
+  while (true) {
+    const p = new URLSearchParams({ ...base, resultOffset: String(offset) });
+    const res = await fetch(`${FH_URL}?${p}`);
+    const gj = await res.json();
+    const batch = gj.features || [];
+    feats.push(...batch);
+    const more = gj.exceededTransferLimit || gj.properties?.exceededTransferLimit || batch.length === 2000;
+    offset += batch.length;
+    if (!more || batch.length === 0) break;
+  }
+  // client-side FH guard + drop null geoms
+  feats = feats.filter(f =>
+    f.geometry &&
+    (f.properties.Description || "").trim().toUpperCase().startsWith("FH")
+  );
+  return turf.featureCollection(feats);
+}
+
+/* ============================================================
+   COVERAGE (buffer + union, cached per radius)
+   ============================================================ */
+function buildCoverage(feetRadius) {
+  if (coverageCache[feetRadius]) return Promise.resolve(coverageCache[feetRadius]);
+  return new Promise((resolve) => {
+    $("working").classList.add("show");
+    setTimeout(() => {
+      const km = feetRadius * 0.0003048;
+      const steps = hydrants.features.length > 1200 ? 8 : 12;
+      const buffers = [];
+      for (const f of hydrants.features) {
+        const b = turf.buffer(f, km, { units: "kilometers", steps });
+        if (b) buffers.push(b);
+      }
+      let union = buffers[0] || null;
+      try { union = turf.union(turf.featureCollection(buffers)); }
+      catch (e) { console.warn("union fallback", e); }
+      coverageCache[feetRadius] = union;
+      $("working").classList.remove("show");
+      resolve(union);
+    }, 20);
+  });
+}
+
+/* ============================================================
+   LAYERS (re-added on each style load)
+   ============================================================ */
+function addLayers() {
+  if (!hydrants) return;
+
+  // coverage source
+  if (!map.getSource("coverage")) {
+    map.addSource("coverage", { type: "geojson", data: turf.featureCollection([]) });
+  }
+  map.addLayer({
+    id: "coverage-glow", type: "line", source: "coverage",
+    paint: { "line-color": "#73dfff", "line-width": 10, "line-blur": 14, "line-opacity": 0.55 }
+  });
+  map.addLayer({
+    id: "coverage-fill", type: "fill", source: "coverage",
+    paint: { "fill-color": "#73dfff", "fill-opacity": 0.14 }
+  });
+  map.addLayer({
+    id: "coverage-edge", type: "line", source: "coverage",
+    paint: { "line-color": "#73dfff", "line-width": 1.2, "line-opacity": 0.7 }
+  });
+
+  // parcel source + layers (whole city, classified covered/uncovered)
+  if (!map.getSource("parcels")) {
+    map.addSource("parcels", { type: "geojson", data: turf.featureCollection([]) });
+  }
+  // fill: gaps orange, covered fully transparent (opacity 0 = still clickable)
+  map.addLayer({
+    id: "parcel-fill", type: "fill", source: "parcels",
+    paint: {
+      "fill-color": "#ffb347",
+      "fill-opacity": ["case", ["==", ["get", "_cov"], 0], 0.34, 0]
+    }
+  });
+  // outline: gaps only — covered parcels draw nothing (keeps render light)
+  map.addLayer({
+    id: "parcel-line", type: "line", source: "parcels",
+    filter: ["==", ["get", "_cov"], 0],
+    paint: { "line-color": "#ffb347", "line-width": 1.1, "line-opacity": 0.9 }
+  });
+
+  // hydrant source + layers
+  if (!map.getSource("hydrants")) {
+    map.addSource("hydrants", { type: "geojson", data: hydrants });
+  }
+  map.addLayer({
+    id: "hyd-halo", type: "circle", source: "hydrants",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 5, 16, 14],
+      "circle-color": "#73dfff", "circle-blur": 1, "circle-opacity": 0.5
+    }
+  });
+  map.addLayer({
+    id: "hyd-core", type: "circle", source: "hydrants",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.2, 16, 5.5],
+      "circle-color": "#ffffff",
+      "circle-stroke-color": "#2bb8e6", "circle-stroke-width": 1.5
+    }
+  });
+
+  // nearest-hydrant connector line
+  if (!map.getSource("nearest")) {
+    map.addSource("nearest", { type: "geojson", data: turf.featureCollection([]) });
+  }
+  map.addLayer({
+    id: "nearest-line", type: "line", source: "nearest",
+    paint: { "line-color": "#73dfff", "line-width": 2, "line-dasharray": [1.5, 1.5] }
+  });
+
+  applyVisibility();
+  refreshCoverage();
+  loadParcels();
+
+  // event bindings survive style swaps — bind them only once
+  if (handlersBound) return;
+  handlersBound = true;
+
+  // parcel tap → address, coverage status, nearest hydrant
+  map.on("click", "parcel-fill", (e) => {
+    const f = e.features[0], p = f.properties;
+    const c = turf.centroid(f);
+    const near = turf.nearestPoint(c, hydrants);
+    const ft = turf.distance(c, near, { units: "miles" }) * 5280;
+    const covered = p._cov === 1 || p._cov === "1";
+    new maplibregl.Popup({ closeButton: true, offset: 6 })
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<h3 style="color:${covered ? 'var(--cyan-deep)' : 'var(--amber)'}">${p.Address || p.Parcel_No || "Parcel"}</h3>` +
+        `<div class="row">${covered ? "Within coverage" : "Outside coverage"}</div>` +
+        `<div class="row">Nearest hydrant ~${Math.round(ft / 10) * 10} ft</div>`
+      )
+      .addTo(map);
+  });
+
+  // popups on hydrant tap
+  map.on("click", "hyd-core", (e) => {
+    const p = e.features[0].properties;
+    new maplibregl.Popup({ closeButton: true, offset: 10 })
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(
+        `<h3>${p.Description || "Hydrant"}</h3>` +
+        (p.GPS_Number ? `<div class="row">GPS #${p.GPS_Number}</div>` : "") +
+        (p.Date ? `<div class="row">Surveyed ${new Date(p.Date).toLocaleDateString()}</div>` : "")
+      )
+      .addTo(map);
+  });
+  map.on("mouseenter", "hyd-core", () => map.getCanvas().style.cursor = "pointer");
+  map.on("mouseleave", "hyd-core", () => map.getCanvas().style.cursor = "");
+}
+
+function applyVisibility() {
+  const cov = showCoverage ? "visible" : "none";
+  ["coverage-glow", "coverage-fill", "coverage-edge"].forEach(l =>
+    map.getLayer(l) && map.setLayoutProperty(l, "visibility", cov));
+  const pts = showPoints ? "visible" : "none";
+  ["hyd-halo", "hyd-core"].forEach(l =>
+    map.getLayer(l) && map.setLayoutProperty(l, "visibility", pts));
+  const par = showParcels ? "visible" : "none";
+  ["parcel-fill", "parcel-line"].forEach(l =>
+    map.getLayer(l) && map.setLayoutProperty(l, "visibility", par));
+}
+
+async function refreshCoverage() {
+  if (!map.getSource("coverage")) return;
+  const union = await buildCoverage(curRadius);
+  map.getSource("coverage").setData(union ? turf.featureCollection([union]) : turf.featureCollection([]));
+
+  $("s-count").textContent = hydrants.features.length.toLocaleString();
+
+  // % of city limits within 500 ft of a hydrant
+  let pctTxt = "—";
+  if (union && cityLimits) {
+    try {
+      const inside = turf.intersect(turf.featureCollection([union, cityLimits]));
+      if (inside) pctTxt = Math.round(turf.area(inside) / turf.area(cityLimits) * 100) + "%";
+    } catch (e) { /* leave as — */ }
+  }
+  $("s-area").textContent = pctTxt;
+
+  if (showParcels) loadParcels();
+}
+
+/* ============================================================
+   COVERAGE TEST GRID  (fast "within 500 ft of any hydrant")
+   ============================================================ */
+function buildHydrantGrid() {
+  const lat0 = 32.62;                         // ~city center, for lng scaling
+  gridCell = { lat: curRadius / 364000, lng: curRadius / (364000 * Math.cos(lat0 * Math.PI / 180)) };
+  hydrantGrid = new Map();
+  for (const f of hydrants.features) {
+    const [x, y] = f.geometry.coordinates;
+    const k = Math.floor(x / gridCell.lng) + ":" + Math.floor(y / gridCell.lat);
+    (hydrantGrid.get(k) || hydrantGrid.set(k, []).get(k)).push([x, y]);
+  }
+}
+function isCovered(lng, lat) {
+  const cx = Math.floor(lng / gridCell.lng), cy = Math.floor(lat / gridCell.lat);
+  const maxMi = curRadius / 5280;
+  const here = turf.point([lng, lat]);
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    const cell = hydrantGrid.get((cx + dx) + ":" + (cy + dy));
+    if (!cell) continue;
+    for (const [hx, hy] of cell) {
+      if (turf.distance(here, turf.point([hx, hy]), { units: "miles" }) <= maxMi) return true;
+    }
+  }
+  return false;
+}
+
+/* ============================================================
+   PARCEL GAPS  (whole city loaded once, classified vs coverage)
+   ============================================================ */
+async function fetchAllParcels() {
+  if (parcelCache) return parcelCache;
+  const base = {
+    where: PARCEL_WHERE, outFields: "Address,Parcel_No", outSR: "4326",
+    f: "geojson", returnGeometry: "true", resultRecordCount: "2000",
+    maxAllowableOffset: "0.00002"      // trims vertices → faster transfer + draw
+  };
+  let offset = 0, feats = [];
+  while (true) {
+    const p = new URLSearchParams({ ...base, resultOffset: String(offset) });
+    const gj = await (await fetch(`${PARCEL_URL}?${p}`)).json();
+    const batch = gj.features || [];
+    feats.push(...batch);
+    const more = gj.exceededTransferLimit || gj.properties?.exceededTransferLimit || batch.length === 2000;
+    offset += batch.length;
+    if (!more || batch.length === 0) break;
+  }
+  parcelCache = feats.filter(f => f.geometry);
+  return parcelCache;
+}
+
+async function loadParcels() {
+  if (!map.getSource("parcels")) return;
+  if (!showParcels) { map.getSource("parcels").setData(turf.featureCollection([])); return; }
+
+  $("gap-line").style.display = "block";
+  $("gap-line").textContent = "Loading properties…";
+  $("working").classList.add("show");
+
+  let feats;
+  try { feats = await fetchAllParcels(); }
+  catch (e) { $("gap-line").textContent = "Couldn't load parcels."; $("working").classList.remove("show"); return; }
+
+  if (!hydrantGrid) buildHydrantGrid();
+  let uncov = 0;
+  for (const f of feats) {
+    const c = turf.centroid(f).geometry.coordinates;
+    const cov = isCovered(c[0], c[1]) ? 1 : 0;
+    f.properties._cov = cov;
+    if (!cov) uncov++;
+  }
+  map.getSource("parcels").setData(turf.featureCollection(feats));
+  $("working").classList.remove("show");
+  $("gap-line").innerHTML =
+    `<b>${uncov.toLocaleString()}</b> of ${feats.length.toLocaleString()} properties beyond ${curRadius} ft`;
+}
+
+/* ============================================================
+   NEAREST HYDRANT ON CLICK
+   ============================================================ */
+map.on("click", (e) => {
+  if (!hydrants || !hydrants.features.length) return;
+  // ignore clicks that land on a hydrant or parcel (their own popups handle those)
+  const guard = ["hyd-core", "parcel-fill"].filter(l => map.getLayer(l));
+  if (map.queryRenderedFeatures(e.point, { layers: guard }).length) return;
+
+  const from = turf.point([e.lngLat.lng, e.lngLat.lat]);
+  const near = turf.nearestPoint(from, hydrants);
+  const ft = turf.distance(from, near, { units: "miles" }) * 5280;
+
+  map.getSource("nearest").setData(turf.featureCollection([
+    turf.lineString([from.geometry.coordinates, near.geometry.coordinates])
+  ]));
+
+  if (clickMarker) clickMarker.remove();
+  const el = document.createElement("div");
+  el.style.cssText = "width:14px;height:14px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(255,179,71,.3)";
+  clickMarker = new maplibregl.Marker({ element: el }).setLngLat(from.geometry.coordinates).addTo(map);
+
+  $("r-dist").textContent = ft < 1000 ? Math.round(ft / 10) * 10 + " ft" : (ft / 5280).toFixed(2) + " mi";
+  $("readout").classList.add("show");
+});
+$("r-close").onclick = () => {
+  $("readout").classList.remove("show");
+  if (clickMarker) { clickMarker.remove(); clickMarker = null; }
+  map.getSource("nearest")?.setData(turf.featureCollection([]));
+};
+
+/* ============================================================
+   UI WIRING
+   ============================================================ */
+$("t-cov").onchange = (e) => { showCoverage = e.target.checked; applyVisibility(); };
+$("t-pts").onchange = (e) => { showPoints = e.target.checked; applyVisibility(); };
+$("t-parcels").onchange = (e) => {
+  showParcels = e.target.checked;
+  applyVisibility();
+  if (showParcels) loadParcels();
+  else $("gap-line").style.display = "none";
+};
+
+$("panel-toggle").onclick = () => $("panel").classList.toggle("collapsed");
+if (window.innerWidth < 560) $("panel").classList.add("collapsed");
+
+$("btn-locate").onclick = () => {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 15 }),
+    () => alert("Couldn't get your location."),
+    { enableHighAccuracy: true }
+  );
+};
+
+$("btn-base").onclick = () => {
+  basemap = basemap === "dark" ? "imagery" : "dark";
+  const keepSources = ["coverage", "hydrants", "nearest", "parcels"];
+  const keepLayers = new Set([
+    "coverage-glow", "coverage-fill", "coverage-edge",
+    "parcel-fill", "parcel-line", "hyd-halo", "hyd-core", "nearest-line"
+  ]);
+  map.setStyle(basemap === "dark" ? STYLE_DARK : STYLE_IMAGERY, {
+    transformStyle: (prev, next) => {
+      const sources = { ...next.sources };
+      for (const id of keepSources) if (prev.sources[id]) sources[id] = prev.sources[id];
+      return {
+        ...next,
+        sources,
+        layers: [...next.layers, ...prev.layers.filter(l => keepLayers.has(l.id))]
+      };
+    }
+  });
+};
+
+// re-add our layers whenever the basemap style (re)loads
+// basemap swaps are handled atomically via transformStyle (see #btn-base)
+
+async function fetchLimits() {
+  const p = new URLSearchParams({ where: "1=1", outFields: "", outSR: "4326", f: "geojson", returnGeometry: "true" });
+  try {
+    const gj = await (await fetch(`${LIMITS_URL}?${p}`)).json();
+    const polys = (gj.features || []).filter(f => f.geometry);
+    if (!polys.length) return null;
+    return polys.length === 1 ? polys[0] : turf.union(turf.featureCollection(polys));
+  } catch (e) { return null; }
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+(async function boot() {
+  try {
+    hydrants = await fetchAllFH();
+    if (!hydrants.features.length) throw new Error("No hydrants returned.");
+    cityLimits = await fetchLimits();
+
+    const [minX, minY, maxX, maxY] = turf.bbox(hydrants);
+    await new Promise(r => map.once("idle", r));  // ensure first style ready
+    map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 60, duration: 0 });
+
+    addLayers();
+    $("load").classList.add("hide");
+  } catch (err) {
+    console.error(err);
+    $("load-msg").textContent = "Couldn't load hydrant data. Check the service URL / sharing.";
+  }
+})();
+</script>
+</body>
+</html>
